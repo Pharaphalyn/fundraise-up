@@ -34,7 +34,6 @@ async function main() {
     try {
         await client.connect();
         const customers = client.db().collection('customers');
-        const cust = await customers.find().toArray();
         await insertRandomUsers(customers);
     }
     catch(e) {
