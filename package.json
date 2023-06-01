@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@faker-js/faker": "^8.0.2",
+    "@types/node": "^20.2.4",
+    "dotenv": "^16.0.3",
+    "mongodb": "^5.5.0"
+  },
+  "type": "module"
+}
