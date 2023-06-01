@@ -5,7 +5,7 @@ import { faker } from '@faker-js/faker';
 
 function createRandomUser(): User {
     return {
-        _id: faker.datatype.uuid(),
+        _id: faker.string.uuid(),
         firstName: faker.person.firstName(),
         lastName: faker.person.lastName(),
         email: faker.internet.email(),
