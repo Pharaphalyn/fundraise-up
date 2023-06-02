@@ -21,11 +21,11 @@ function createRandomUser(): User {
     };
 }
 
-async function insertRandomUsers(customers: Collection) {
+async function insertRandomUsers(collection: Collection) {
     const users: User[] = faker.helpers.multiple(createRandomUser,
         {count: Math.floor(Math.random() * 9) + 1});
-    customers.insertMany(users);
-    setTimeout(() => insertRandomUsers(customers), 200);
+        collection.insertMany(users);
+    setTimeout(() => insertRandomUsers(collection), 200);
 }
 
 async function main() {
