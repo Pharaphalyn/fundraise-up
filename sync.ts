@@ -6,6 +6,10 @@ import { createHash } from 'crypto';
 let queries = [];
 let timeout;
 
+//Easy way to add or remove fields to encode
+const encodedFields = ['firstName', 'lastName', 'email',
+    'address.postcode', 'address.line1', 'address.line2'];
+
 async function fullSync(customers: Collection, customersAnonymised: Collection) {
     const allCustomers = await customers.find().toArray();
 
@@ -26,14 +30,28 @@ async function continuousSync(customers: Collection, customersAnonymised: Collec
     timeout = setTimeout(() => writeDocuments(customersAnonymised), 1000);
     const changeStream = customers.watch();
     for await (const change of changeStream) {
-        const doc = change['fullDocument'];
-        queries.push({
-            updateOne: {
-                filter: {_id: doc._id},
-                update: {$set: encodeCustomer(doc)},
-                upsert: true
-            }
-        });
+        if (change.operationType === 'update') {
+            const update = change.updateDescription.updatedFields;
+            queries.push({
+                updateOne: {
+                    filter: {_id: change['documentKey']._id},
+                    update: {$set: encodeUpdate(update)},
+                    upsert: true
+                }
+            });
+        } else if (change.operationType === 'insert') {
+            const doc = change['fullDocument'];
+            queries.push({
+                updateOne: {
+                    filter: {_id: change['documentKey']._id},
+                    update: {$set: encodeCustomer(doc)},
+                    upsert: true
+                }
+            });
+        }
+        if (queries.length >= 1000) {
+            writeDocuments(customersAnonymised);
+        }
     }
 }
 
@@ -48,14 +66,33 @@ function writeDocuments(collection: Collection) {
 }
 
 function encodeCustomer(customer): User {
-    customer.firstName = encodeString(customer.firstName);
-    customer.lastName = encodeString(customer.lastName);
-    customer.address.postcode = encodeString(customer.address.postcode);
-    customer.address.line1 = encodeString(customer.address.line1);
-    customer.address.line2 = encodeString(customer.address.line2);
-    const emailSplit = customer.email.split('@');
-    customer.email = encodeString(emailSplit[0]) + '@' + emailSplit[1];
+    encodedFields.forEach(field => {
+        if (field === 'email') {
+            return customer[field] = encodeEmail(customer[field]);
+        }
+        if (field.indexOf('.') !== -1) {
+            const fieldSplit = field.split('.');
+            return customer[fieldSplit[0]][fieldSplit[1]] =
+                encodeString(customer[fieldSplit[0]][fieldSplit[1]])
+        }
+        customer[field] = encodeString(customer[field]);
+    });
     return customer;
+}
+
+function encodeUpdate(update) {
+    Object.keys(update).forEach(field => {
+        if (field === 'email') {
+            return update[field] = encodeEmail(update[field]);
+        }
+        update[field] = encodeString(update[field]);
+    });
+    return update;
+}
+
+function encodeEmail(email: string) {
+    const emailSplit = email.split('@');
+    return encodeString(emailSplit[0]) + '@' + emailSplit[1];
 }
 
 //It could be more secure but I'll leave it as it is
