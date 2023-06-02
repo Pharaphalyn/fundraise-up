@@ -1,4 +1,9 @@
-{
+{ 
+  "scripts": {
+    "sync": "ts-node-esm ./sync.ts",
+    "start": "ts-node-esm ./app.ts",
+    "reindex": "ts-node-esm ./sync.ts --full-reindex"
+  },
   "dependencies": {
     "@faker-js/faker": "^8.0.2",
     "@types/node": "^20.2.4",
