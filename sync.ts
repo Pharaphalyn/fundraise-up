@@ -28,18 +28,9 @@ async function fullSync(customers: Collection, customersAnonymised: Collection) 
 
 async function continuousSync(customers: Collection, customersAnonymised: Collection) {
     timeout = setTimeout(() => writeDocuments(customersAnonymised), 1000);
-    const changeStream = customers.watch();
+    const changeStream = customers.watch([], { fullDocument: 'updateLookup' });
     for await (const change of changeStream) {
-        if (change.operationType === 'update') {
-            const update = change.updateDescription.updatedFields;
-            queries.push({
-                updateOne: {
-                    filter: {_id: change['documentKey']._id},
-                    update: {$set: encodeUpdate(update)},
-                    upsert: true
-                }
-            });
-        } else if (change.operationType === 'insert') {
+        if (change.operationType === 'update' || change.operationType === 'insert') {
             const doc = change['fullDocument'];
             queries.push({
                 updateOne: {
@@ -48,9 +39,9 @@ async function continuousSync(customers: Collection, customersAnonymised: Collec
                     upsert: true
                 }
             });
-        }
-        if (queries.length >= 1000) {
-            writeDocuments(customersAnonymised);
+            if (queries.length >= 1000) {
+                writeDocuments(customersAnonymised);
+            }
         }
     }
 }
@@ -59,7 +50,7 @@ function writeDocuments(collection: Collection) {
     clearTimeout(timeout);
     if (queries.length) {
         collection.bulkWrite(queries);
-        console.log(queries.length + ' documents written.');
+        console.log('Writing ' + queries.length + ' documents.');
         queries = [];
     }
     timeout = setTimeout(() => writeDocuments(collection), 1000);
@@ -80,23 +71,26 @@ function encodeCustomer(customer): User {
     return customer;
 }
 
-function encodeUpdate(update) {
-    Object.keys(update).forEach(field => {
-        if (field === 'email') {
-            return update[field] = encodeEmail(update[field]);
-        }
-        update[field] = encodeString(update[field]);
-    });
-    return update;
-}
+///Deprecated
+///Used it before I learned about { fullDocument: 'updateLookup' }
+///Left it here for reference
+// function encodeUpdate(update) {
+//     Object.keys(update).forEach(field => {
+//         if (field === 'email') {
+//             return update[field] = encodeEmail(update[field]);
+//         }
+//         update[field] = encodeString(update[field]);
+//     });
+//     return update;
+// }
 
 function encodeEmail(email: string) {
     const emailSplit = email.split('@');
     return encodeString(emailSplit[0]) + '@' + emailSplit[1];
 }
 
-//It could be more secure but I'll leave it as it is
-//for the sake of simplicity
+///It could be more secure but I'll leave it as it is
+///for the sake of simplicity
 function encodeString(str: string): string {
     str = createHash('md5').update(str).digest('base64');
     str = str.slice(0, 8).replace(/\+|\//g, '0');
