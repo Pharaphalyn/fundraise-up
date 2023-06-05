@@ -1,10 +1,14 @@
 import { User } from './interfaces/user';
 import 'dotenv/config';
-import { Collection, MongoClient } from 'mongodb';
+import { ChangeStreamOptions, Collection, MongoClient } from 'mongodb';
 import { createHash } from 'crypto';
+import 'fs';
+import { writeFile } from 'fs';
+import { readFile } from 'fs/promises';
 
 let queries = [];
 let timeout;
+let resumeToken: Object;
 
 //Easy way to add or remove fields to encode
 const encodedFields = ['firstName', 'lastName', 'email',
@@ -28,7 +32,20 @@ async function fullSync(customers: Collection, customersAnonymised: Collection) 
 
 async function continuousSync(customers: Collection, customersAnonymised: Collection) {
     timeout = setTimeout(() => writeDocuments(customersAnonymised), 1000);
-    const changeStream = customers.watch([], { fullDocument: 'updateLookup' });
+    try {
+        const tokenFile = await readFile('resume_token.json');
+        if (tokenFile && tokenFile.toString()) {
+            resumeToken = JSON.parse(tokenFile.toString());
+        }
+    }
+    catch (e) {
+        console.log(e);
+    }
+    const options: ChangeStreamOptions = { fullDocument: 'updateLookup' };
+    if (resumeToken) {
+        options.resumeAfter = resumeToken;
+    }
+    const changeStream = customers.watch([], options);
     for await (const change of changeStream) {
         if (change.operationType === 'update' || change.operationType === 'insert') {
             const doc = change['fullDocument'];
@@ -39,6 +56,7 @@ async function continuousSync(customers: Collection, customersAnonymised: Collec
                     upsert: true
                 }
             });
+            resumeToken = change._id;
             if (queries.length >= 1000) {
                 writeDocuments(customersAnonymised);
             }
@@ -52,6 +70,11 @@ function writeDocuments(collection: Collection) {
         collection.bulkWrite(queries);
         console.log('Writing ' + queries.length + ' documents.');
         queries = [];
+        writeFile('resume_token.json', JSON.stringify(resumeToken), err => {
+            if (err) {
+              console.error(err);
+            }
+        });
     }
     timeout = setTimeout(() => writeDocuments(collection), 1000);
 }
@@ -61,6 +84,7 @@ function encodeCustomer(customer): User {
         if (field === 'email') {
             return customer[field] = encodeEmail(customer[field]);
         }
+        //Only gets two levels deep into an object since it's enough for the task
         if (field.indexOf('.') !== -1) {
             const fieldSplit = field.split('.');
             return customer[fieldSplit[0]][fieldSplit[1]] =
